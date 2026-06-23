@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asistente IA (prueba)</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; padding: 16px; color: #1b1b1b; }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    .ok { color: #0f6e56; font-weight: 600; }
+    .campo { margin-top: 12px; }
+    .etiqueta { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b6b6b; }
+    .valor { font-size: 14px; margin-top: 2px; word-break: break-word; }
+    .cargando { color: #6b6b6b; font-style: italic; }
+
+    /* --- Consideraciones / Configuración (plegables) --- */
+    .consideraciones { margin-top: 14px; border: 1px solid #e3e3e1; border-radius: 8px; padding: 8px 10px; }
+    .consideraciones summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #0f6e56; outline: none; }
+    .consideraciones textarea { width: 100%; box-sizing: border-box; min-height: 120px; resize: vertical;
+                font-family: inherit; font-size: 13px; line-height: 1.45; padding: 8px; margin-top: 8px;
+                border: 1px solid #d0d0ce; border-radius: 6px; }
+    .consideraciones input[type="text"] { width: 100%; box-sizing: border-box; font-family: inherit;
+                font-size: 13px; padding: 8px; margin-top: 8px; border: 1px solid #d0d0ce; border-radius: 6px; }
+    .ayuda { font-size: 11px; color: #8a8a8a; margin-top: 4px; }
+
+    /* --- Acción y borrador --- */
+    .barra { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button { font-family: inherit; font-size: 13px; border-radius: 8px; padding: 8px 14px;
+             cursor: pointer; border: 1px solid transparent; }
+    button:disabled { opacity: .5; cursor: default; }
+    .primario { background: #0f6e56; color: #fff; }
+    .primario:hover:not(:disabled) { background: #0c5a47; }
+    .secundario { background: #fff; color: #1b1b1b; border-color: #d0d0ce; }
+    .secundario:hover:not(:disabled) { background: #f3f3f1; }
+    #borradorWrap { margin-top: 14px; display: none; }
+    #borrador { width: 100%; box-sizing: border-box; min-height: 200px; resize: vertical;
+                font-family: inherit; font-size: 13px; line-height: 1.5; padding: 10px;
+                border: 1px solid #d0d0ce; border-radius: 8px; }
+    .msg { margin-top: 10px; font-size: 13px; }
+    .msg.error { color: #a4262c; }
+    .msg.info { color: #6b6b6b; font-style: italic; }
+    .nota { font-size: 12px; }
+
+    /* --- Pie: comprobación de lectura + autoría --- */
+    .pie { margin-top: 20px; padding-top: 10px; border-top: 1px solid #ececea; }
+    .cuerpoLeido { font-size: 11px; color: #8a8a8a;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .autoria { margin-top: 6px; font-size: 11px; color: #b0b0b0; }
+  </style>
+</head>
+<body>
+  <h1>Asistente IA <span class="ok">— ¡funciona!</span></h1>
+  <div class="cargando" id="estado">Leyendo el correo abierto…</div>
+
+  <div class="campo"><div class="etiqueta">De</div><div class="valor" id="de">—</div></div>
+  <div class="campo"><div class="etiqueta">Asunto</div><div class="valor" id="asunto">—</div></div>
+
+  <div id="msg" class="msg"></div>
+
+  <div id="borradorWrap">
+    <div class="etiqueta" style="margin-bottom:4px;">Borrador (editable)</div>
+    <textarea id="borrador" spellcheck="true"></textarea>
+    <div class="barra">
+      <button id="btnCopiar" class="secundario">Copiar</button>
+      <button id="btnResponder" class="secundario">Insertar en respuesta</button>
+    </div>
+    <div class="ayuda" id="docsConsultados" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="barra">
+    <button id="btnProponer" class="primario" disabled>Proponer respuesta</button>
+  </div>
+
+  <details class="consideraciones" id="configBox">
+    <summary>⚙ Configuración</summary>
+    <div class="campo" style="margin-top:8px;">
+      <div class="etiqueta">Carpeta de Drive</div>
+      <input id="carpeta" type="text" spellcheck="false"
+        placeholder="https://drive.google.com/drive/folders/..." />
+    </div>
+    <div class="ayuda">Pega el link de tu carpeta personal de Drive (la que compartiste con el robot).
+      Se guarda en este equipo.</div>
+    <div class="barra">
+      <button id="btnGuardarCarpeta" class="secundario">Guardar</button>
+      <span id="carpetaEstado" class="nota info"></span>
+    </div>
+  </details>
+
+  <details class="consideraciones" id="consBox">
+    <summary>⚙ Consideraciones generales</summary>
+    <textarea id="consideraciones" spellcheck="true"
+      placeholder="Ej.: Soy secretaria del Magíster en Psicología Clínica. Trato de usted, cercano pero formal. Nunca comprometer plazos sin confirmar con dirección. Derivar consultas de arancel a Finanzas."></textarea>
+    <div class="ayuda">Se guardan en este equipo y se aplican a cada respuesta. (Opcional.)</div>
+    <div class="barra">
+      <button id="btnGuardarCons" class="secundario">Guardar</button>
+      <span id="consEstado" class="nota info"></span>
+    </div>
+  </details>
+
+  <div class="pie">
+    <div class="cuerpoLeido" id="cuerpoLeido" title="">Cuerpo del correo leído: —</div>
+    <div class="autoria">Hecho por Felipe 🍫 (acepta chocolates)</div>
+  </div>
+
+  <script>
+    // ====== Configuración ======
+    // En desarrollo apunta a tu backend (túnel HTTPS o, más adelante, Cloud Run).
+    var BACKEND_URL = "https://uniacc-responder-unuq5znstq-tl.a.run.app";
+
+    // true  -> al abrir el panel se genera el borrador solo (sin apretar nada).
+    var AUTO_PROPONER = true;
+
+    // Claves de almacenamiento. Usamos Office.context.roamingSettings (guardado
+    // en el BUZÓN, no en el navegador): persiste de verdad dentro del iframe de
+    // Outlook Web y se carga al abrir, así el auto-borrador ya las incluye.
+    var CONS_KEY = "uniacc_consideraciones";
+    var CARPETA_KEY = "uniacc_carpeta";
+
+    var correo = { from: "", subject: "", body: "" };
+    var yaGeneroAlguna = false;
+
+    function $(id) { return document.getElementById(id); }
+    function setMsg(texto, tipo) {
+      var m = $("msg");
+      m.textContent = texto || "";
+      m.className = "msg" + (tipo ? " " + tipo : "");
+    }
+
+    // --- Consideraciones: cargar / guardar (roamingSettings = buzón) ---
+    function cargarConsideraciones() {
+      try {
+        var v = Office.context.roamingSettings.get(CONS_KEY);
+        if (v) $("consideraciones").value = v;
+      } catch (e) { /* no disponible: sigue sin persistir */ }
+    }
+    function guardarConsideraciones(silencioso) {
+      try {
+        Office.context.roamingSettings.set(CONS_KEY, $("consideraciones").value || "");
+        Office.context.roamingSettings.saveAsync(function (res) {
+          if (silencioso) return;
+          var e = $("consEstado");
+          if (res.status === Office.AsyncResultStatus.Succeeded) {
+            e.textContent = "Guardado.";
+            setTimeout(function () { e.textContent = ""; }, 2000);
+          } else {
+            e.textContent = "No se pudo guardar.";
+          }
+        });
+      } catch (e) {
+        if (!silencioso) $("consEstado").textContent = "No se pudo guardar.";
+      }
+    }
+
+    // --- Carpeta de Drive: cargar / guardar (mismo patrón, roamingSettings) ---
+    function cargarCarpeta() {
+      try {
+        var v = Office.context.roamingSettings.get(CARPETA_KEY);
+        if (v) $("carpeta").value = v;
+      } catch (e) { /* no disponible */ }
+    }
+    function guardarCarpeta(silencioso) {
+      try {
+        Office.context.roamingSettings.set(CARPETA_KEY, ($("carpeta").value || "").trim());
+        Office.context.roamingSettings.saveAsync(function (res) {
+          if (silencioso) return;
+          var e = $("carpetaEstado");
+          if (res.status === Office.AsyncResultStatus.Succeeded) {
+            e.textContent = "Guardado.";
+            setTimeout(function () { e.textContent = ""; }, 2000);
+          } else {
+            e.textContent = "No se pudo guardar.";
+          }
+        });
+      } catch (e) {
+        if (!silencioso) $("carpetaEstado").textContent = "No se pudo guardar.";
+      }
+    }
+
+    Office.onReady(function (info) {
+      if (info.host !== Office.HostType.Outlook) {
+        $("estado").textContent = "Este panel debe abrirse dentro de Outlook.";
+        return;
+      }
+      var item = Office.context.mailbox.item;
+      $("estado").textContent = "Office.js conectado correctamente.";
+
+      // Cargamos ajustes YA (sincrónico), así la auto-generación los usa.
+      cargarConsideraciones();
+      cargarCarpeta();
+
+      var nombre = (item.from && item.from.displayName) || "";
+      var email = (item.from && item.from.emailAddress) || "";
+      correo.from = (nombre ? nombre + " " : "") + (email ? "<" + email + ">" : "");
+      correo.subject = item.subject || "";
+      $("de").textContent = correo.from || "—";
+      $("asunto").textContent = correo.subject || "(sin asunto)";
+
+      $("btnProponer").addEventListener("click", proponerRespuesta);
+      $("btnCopiar").addEventListener("click", copiarBorrador);
+      $("btnResponder").addEventListener("click", insertarEnRespuesta);
+      $("btnGuardarCons").addEventListener("click", function () { guardarConsideraciones(false); });
+      $("btnGuardarCarpeta").addEventListener("click", function () { guardarCarpeta(false); });
+
+      // Cuerpo (asíncrono). Cuando llega, recién aquí podemos generar.
+      item.body.getAsync(Office.CoercionType.Text, function (res) {
+        if (res.status === Office.AsyncResultStatus.Succeeded) {
+          correo.body = (res.value || "").trim();
+
+          var resumen = correo.body.replace(/\s+/g, " ").trim();
+          var corto = resumen.length > 90 ? resumen.slice(0, 90) + "…" : (resumen || "(cuerpo vacío)");
+          $("cuerpoLeido").textContent = "Cuerpo del correo leído: " + corto;
+          $("cuerpoLeido").title = resumen;
+
+          $("btnProponer").disabled = false;
+
+          if (AUTO_PROPONER && correo.body) {
+            proponerRespuesta();
+          }
+        } else {
+          $("cuerpoLeido").textContent = "No se pudo leer el cuerpo: " + res.error.message;
+        }
+      });
+    });
+
+    // ====== Llamada al backend ======
+    async function proponerRespuesta() {
+      var btn = $("btnProponer");
+
+      // Persistimos lo que esté escrito, por si la persona no apretó "Guardar".
+      guardarConsideraciones(true);
+      guardarCarpeta(true);
+
+      // Sin carpeta no hay conocimiento que consultar: avisamos y abrimos la
+      // sección Configuración en vez de hacer una llamada que el backend rechaza.
+      var carpeta = ($("carpeta").value || "").trim();
+      if (!carpeta) {
+        setMsg("Configura tu carpeta de Drive en “⚙ Configuración” para generar borradores.", "error");
+        $("configBox").open = true;
+        return;
+      }
+
+      btn.disabled = true;
+      setMsg("Generando borrador…", "info");
+      $("docsConsultados").textContent = "";
+
+      try {
+        var resp = await fetch(BACKEND_URL + "/api/draft", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: correo.from,
+            subject: correo.subject,
+            body: correo.body,
+            consideraciones: $("consideraciones").value || "",
+            carpeta: carpeta
+          })
+        });
+
+        if (!resp.ok) {
+          var errData = {};
+          try { errData = await resp.json(); } catch (e) {}
+          throw new Error(errData.detail || errData.error || ("HTTP " + resp.status));
+        }
+
+        var data = await resp.json();
+        $("borrador").value = data.draft || "";
+        $("borradorWrap").style.display = "block";
+
+        if (!yaGeneroAlguna) { btn.textContent = "Proponer de nuevo"; yaGeneroAlguna = true; }
+
+        // Transparencia: qué documentos usó el borrador.
+        var consultados = (data.meta && Array.isArray(data.meta.consultados)) ? data.meta.consultados : [];
+        $("docsConsultados").textContent = consultados.length
+          ? "Documentos consultados: " + consultados.join(", ")
+          : "No se consultaron documentos para este correo.";
+
+        var cache = data.meta && typeof data.meta.cachedTokens === "number"
+          ? " (caché: " + data.meta.cachedTokens + " tokens)" : "";
+        setMsg("Borrador listo. Revísalo y edítalo antes de usarlo." + cache, "info");
+      } catch (err) {
+        var detalle = String(err && err.message ? err.message : err);
+        if (detalle === "Failed to fetch") {
+          detalle = "no pude conectar con el backend. ¿Está corriendo en " + BACKEND_URL + "?";
+        }
+        setMsg("Error: " + detalle, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ====== Acciones sobre el borrador ======
+    function copiarBorrador() {
+      var ta = $("borrador");
+      ta.select();
+      navigator.clipboard.writeText(ta.value).then(
+        function () { setMsg("Borrador copiado al portapapeles.", "info"); },
+        function () {
+          try { document.execCommand("copy"); setMsg("Borrador copiado.", "info"); }
+          catch (e) { setMsg("No se pudo copiar automáticamente; selecciona y copia a mano.", "error"); }
+        }
+      );
+    }
+
+    function insertarEnRespuesta() {
+      var texto = $("borrador").value || "";
+      var html = texto
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/\n/g, "<br>");
+      Office.context.mailbox.item.displayReplyFormAsync(
+        { htmlBody: html },
+        function (res) {
+          if (res.status === Office.AsyncResultStatus.Succeeded) {
+            setMsg("Se abrió una respuesta con el borrador puesto.", "info");
+          } else {
+            setMsg("No se pudo abrir la respuesta: " + res.error.message, "error");
+          }
+        }
+      );
+    }
+  </script>
+</body>
+</html>
